@@ -7,13 +7,44 @@ def selecionar_arquivo(titulo="Selecione um arquivo .jff"):
     Tk().withdraw()
     return askopenfilename(title=titulo, filetypes=[("JFLAP files", "*.jff")])
 
-def completar_automato(estados, transicoes, alfabeto, arvore_xml, automato_xml, nome_saida="completo.jff"):
-    print("\nIniciando o processo para completar o autômato...")
+def salvar_automato_jff(estados, transicoes, nome_saida):
 
-    transicoes_existentes = {(de, simbolo) for de, _, simbolo in transicoes if simbolo != 'ε'}
+    raiz_xml = ET.Element("structure")
+    ET.SubElement(raiz_xml, "type").text = "fa"
+    automato_xml = ET.SubElement(raiz_xml, "automaton")
+
+    for id_estado, info_estado in estados.items():
+        elemento_estado_xml = ET.SubElement(
+            automato_xml, "state", id=id_estado, name=info_estado["nome"])
+        ET.SubElement(elemento_estado_xml, "x").text = "0.0"
+        ET.SubElement(elemento_estado_xml, "y").text = "0.0"
+        if info_estado.get("inicial"):
+            ET.SubElement(elemento_estado_xml, "initial")
+        if info_estado.get("final"):
+            ET.SubElement(elemento_estado_xml, "final")
+
+    for de, para, simbolo in transicoes:
+        elemento_transicao_xml = ET.SubElement(automato_xml, "transition")
+        ET.SubElement(elemento_transicao_xml, "from").text = de
+        ET.SubElement(elemento_transicao_xml, "to").text = para
+        simbolo_lido = simbolo if simbolo is not None else ""
+        ET.SubElement(elemento_transicao_xml, "read").text = "" if simbolo_lido == "ε" else simbolo_lido
+
+    try:
+        arvore_xml = ET.ElementTree(raiz_xml)
+        arvore_xml.write(nome_saida, encoding="utf-8", xml_declaration=True)
+        print(f"\nArquivo '{nome_saida}' salvo com sucesso.")
+    except Exception as e:
+        print(f"\nErro ao salvar o arquivo '{nome_saida}': {e}")
+
+
+def completar_automato(estados, transicoes, alfabeto, arvore_xml, automato_xml, nome_saida="completo.jff"):
+    print(f"\nIniciando o processo para completar o autômato (saída: {nome_saida})...")
+
+    transicoes_existentes = {(de, simbolo) for de, _, simbolo in transicoes if simbolo is not None and simbolo != 'ε'}
 
     ids_numericos = [int(i) for i in estados.keys() if i.isdigit()]
-    id_consumidor = str(max(ids_numericos) + 1 if ids_numericos else 0)
+    id_consumidor = str(max(ids_numericos) + 1 if ids_numericos else len(estados))
     nome_consumidor = "q_erro"
     
     estados[id_consumidor] = {
@@ -21,9 +52,16 @@ def completar_automato(estados, transicoes, alfabeto, arvore_xml, automato_xml, 
         "inicial": False,
         "final": False
     }
+    print(f"Estado de erro '{nome_consumidor}' (ID: {id_consumidor}) adicionado.")
 
     novas_transicoes = []
+    
+    for simbolo in alfabeto:
+        novas_transicoes.append((id_consumidor, id_consumidor, simbolo))
+
     for id_estado in list(estados.keys()):
+        if id_estado == id_consumidor:
+            continue
         for simbolo in alfabeto:
             if (id_estado, simbolo) not in transicoes_existentes:
                 novas_transicoes.append((id_estado, id_consumidor, simbolo))
@@ -31,30 +69,39 @@ def completar_automato(estados, transicoes, alfabeto, arvore_xml, automato_xml, 
 
     transicoes.extend(novas_transicoes)
 
-    for elemento in automato_xml.findall("state") + automato_xml.findall("transition"):
-        automato_xml.remove(elemento)
-
-    for id_estado, info_estado in estados.items():
-        elemento_estado_xml = ET.SubElement(
-            automato_xml, "state", id=id_estado, name=info_estado["nome"])
-        if info_estado.get("inicial"):
-            ET.SubElement(elemento_estado_xml, "initial")
-        if info_estado.get("final"):
-            ET.SubElement(elemento_estado_xml, "final")
-        ET.SubElement(elemento_estado_xml, "x").text = "0"
-        ET.SubElement(elemento_estado_xml, "y").text = "0"
-
-    for de_estado, para_estado, simbolo in transicoes:
-        elemento_transicao_xml = ET.SubElement(automato_xml, "transition")
-        ET.SubElement(elemento_transicao_xml, "from").text = de_estado
-        ET.SubElement(elemento_transicao_xml, "to").text = para_estado
-        ET.SubElement(elemento_transicao_xml,
-                      "read").text = "" if simbolo == "ε" else simbolo
-
-    arvore_xml.write(nome_saida, encoding="utf-8", xml_declaration=True)
-    print(f"\nArquivo '{nome_saida}' salvo com sucesso.")
-
+ 
+    salvar_automato_jff(estados, transicoes, nome_saida)
+    
     return estados, transicoes
+
+def remover_estados_inuteis(estados, transicoes):
+  
+    print("\n--- Iniciando remoção de estados inalcançáveis ---")
+
+    id_estado_inicial = next((id_e for id_e, info in estados.items() if info.get("inicial")), None)
+    
+    if id_estado_inicial is None:
+        print("Aviso: Nenhum estado inicial encontrado. Não é possível otimizar.")
+        return estados, transicoes
+
+    estados_alcancaveis = set()
+    fila_para_visitar = [id_estado_inicial]
+    estados_alcancaveis.add(id_estado_inicial)
+
+    while fila_para_visitar:
+        id_atual = fila_para_visitar.pop(0)
+        for de, para, simbolo in transicoes:
+            if de == id_atual and para not in estados_alcancaveis:
+                estados_alcancaveis.add(para)
+                fila_para_visitar.append(para)
+    
+    estados_originais_cont = len(estados)
+    novos_estados = {id_e: info for id_e, info in estados.items() if id_e in estados_alcancaveis}
+    novas_transicoes = [(de, para, simbolo) for de, para, simbolo in transicoes if de in estados_alcancaveis and para in estados_alcancaveis]
+
+    print(f"Otimização concluída: {estados_originais_cont - len(novos_estados)} estado(s) inalcançável(eis) removido(s).")
+    
+    return novos_estados, novas_transicoes
 
 def aplicar_estrela(estados, transicoes, arvore_xml, automato_xml, nome_saida="estrela_aplicada.jff"):
     novos_ids_int = []
@@ -133,33 +180,22 @@ def aplicar_estrela(estados, transicoes, arvore_xml, automato_xml, nome_saida="e
         print(f"\nErro ao salvar o arquivo '{nome_saida}': {e}")
 
     return estados, transicoes
-def eh_completo(estados, transicoes, alfabeto):
-    for _, _, simbolo in transicoes:
-        if simbolo == "ε":
-            print("Erro: O autômato possui transições epsilon. Não é um AFD completo.")
-            return False
 
+def eh_completo(estados, transicoes, alfabeto):
     transicoes_por_estado_simbolo = {}
     for de_estado, _, simbolo in transicoes:
-        if (de_estado, simbolo) in transicoes_por_estado_simbolo:
-            print(
-                f"Erro: O autômato possui múltiplas transições para o estado {estados[de_estado]['nome']} com o símbolo '{simbolo}'. Não é um AFD completo.")
-            return False
+        if simbolo is None or simbolo == 'ε': return False
+        if (de_estado, simbolo) in transicoes_por_estado_simbolo: return False
         transicoes_por_estado_simbolo[(de_estado, simbolo)] = True
 
     for id_estado in estados.keys():
         for simbolo in alfabeto:
             if (id_estado, simbolo) not in transicoes_por_estado_simbolo:
-                print(
-                    f"Erro: O estado {estados[id_estado]['nome']} não possui transição para o símbolo '{simbolo}'. O autômato não é completo.")
                 return False
     return True
 
 def aplicar_complemento(estados, transicoes, arvore_xml, automato_xml, alfabeto, nome_saida="complemento_aplicado.jff"):
-    """
-    Aplica a operação de complemento em um autômato.
-    Se o autômato não for completo, ele o completa antes de inverter os estados.
-    """
+
     print("\n--- Iniciando Operação de Complemento ---")
 
     if not eh_completo(estados, transicoes, alfabeto):
@@ -209,162 +245,67 @@ def aplicar_complemento(estados, transicoes, arvore_xml, automato_xml, alfabeto,
 
     return estados, transicoes
 
+def aplicar_diferenca_simetrica(
+    estados1, transicoes1, alfabeto1, arvore_xml1, automato_xml1,
+    estados2, transicoes2, alfabeto2, arvore_xml2, automato_xml2
+):
 
-def eh_completo(estados, transicoes, alfabeto):
+    print("\n--- Iniciando Operação de Diferença Simétrica ---")
 
-    transicoes_por_estado_simbolo = {}
-    for de_estado, _, simbolo in transicoes:
-        if simbolo == 'ε': return False 
-        if (de_estado, simbolo) in transicoes_por_estado_simbolo:
-            return False 
-        transicoes_por_estado_simbolo[(de_estado, simbolo)] = True
+    alfabeto_uniao = alfabeto1.union(alfabeto2)
+    print(f"Alfabeto unificado para a operação: {sorted(list(alfabeto_uniao))}")
 
-    for id_estado in estados.keys():
-        for simbolo in alfabeto:
-            if (id_estado, simbolo) not in transicoes_por_estado_simbolo:
-                return False 
-    return True
+    print("\n--- Verificando Autômato 1 ---")
+    if not eh_completo(estados1, transicoes1, alfabeto_uniao):
+        print("O Autômato 1 não é completo. Completando...")
+        estados1, transicoes1 = completar_automato(
+            estados1, transicoes1, alfabeto_uniao, arvore_xml1, automato_xml1, "automato1_completo_temp.jff")
+        print("Autômato 1 completado.")
+    else:
+        print("O Autômato 1 já é completo.")
 
-def aplicar_diferenca_simetrica(estados1, transicoes1, alfabeto1, estados2, transicoes2, alfabeto2, nome_saida="diferenca_simetrica_aplicada.jff"):
-    print("Verificando o Autômato 1...")
-    if not eh_completo(estados1, transicoes1, alfabeto1):
-        print("Erro: O Autômato 1 não é um AFD completo. Não é possível aplicar a diferença simétrica.")
-        return None, None
+    print("\n--- Verificando Autômato 2 ---")
+    if not eh_completo(estados2, transicoes2, alfabeto_uniao):
+        print("O Autômato 2 não é completo. Completando...")
+        estados2, transicoes2 = completar_automato(
+            estados2, transicoes2, alfabeto_uniao, arvore_xml2, automato_xml2, "automato2_completo_temp.jff")
+        print("Autômato 2 completado.")
+    else:
+        print("O Autômato 2 já é completo.")
 
-    print("Verificando o Autômato 2...")
-    if not eh_completo(estados2, transicoes2, alfabeto2):
-        print("Erro: O Autômato 2 não é um AFD completo. Não é possível aplicar a diferença simétrica.")
-        return None, None
-
-    alfabeto_resultado = alfabeto1.union(alfabeto2)
-
+    print("\nConstruindo o autômato produto...")
+    
     novos_estados = {}
     novas_transicoes = []
-    id_estado_inicial_resultado = None
+    mapa_originais_para_novo_id = {}
     contador_novo_estado = 0
-
-    mapa_ids1_para_nomes = {id_e: estados1[id_e]["nome"] for id_e in estados1}
-    mapa_ids2_para_nomes = {id_e: estados2[id_e]["nome"] for id_e in estados2}
 
     for id1, info1 in estados1.items():
         for id2, info2 in estados2.items():
             novo_id = str(contador_novo_estado)
             novo_nome_combinado = f"({info1['nome']},{info2['nome']})"
-
+            mapa_originais_para_novo_id[(id1, id2)] = novo_id
+            eh_final = (info1["final"] and not info2["final"]) or (not info1["final"] and info2["final"])
             novos_estados[novo_id] = {
                 "nome": novo_nome_combinado,
-                "inicial": False,
-                "final": False
+                "inicial": info1["inicial"] and info2["inicial"],
+                "final": eh_final
             }
-
-            if info1["inicial"] and info2["inicial"]:
-                novos_estados[novo_id]["inicial"] = True
-                id_estado_inicial_resultado = novo_id
-
-            if (info1["final"] and not info2["final"]) or (not info1["final"] and info2["final"]):
-                novos_estados[novo_id]["final"] = True
-
             contador_novo_estado += 1
 
-    if id_estado_inicial_resultado is None:
-        print("Erro: Não foi possível determinar o estado inicial do autômato resultante. Verifique se ambos os autômato de entrada têm estados iniciais.")
-        return None, None
+    mapa_transicoes1 = {(f, s): t for f, t, s in transicoes1}
+    mapa_transicoes2 = {(f, s): t for f, t, s in transicoes2}
 
-    tabela_busca_id_estado = {}
-    for novo_id_s, info_novo_s in novos_estados.items():
-        partes_nome = info_novo_s["nome"][1:-1].split(',')
-        nome_original1 = partes_nome[0]
-        nome_original2 = partes_nome[1]
-
-        id1_original = None
-        for id_e, info_e in estados1.items():
-            if info_e["nome"] == nome_original1:
-                id1_original = id_e
-                break
-        id2_original = None
-        for id_e, info_e in estados2.items():
-            if info_e["nome"] == nome_original2:
-                id2_original = id_e
-                break
-
-        if id1_original is not None and id2_original is not None:
-            tabela_busca_id_estado[(id1_original, id2_original)] = novo_id_s
-        else:
-            print(
-                f"Aviso: Não foi possível mapear o nome combinado {info_novo_s['nome']} de volta aos IDs originais.")
-
-    for id_atual_novo, info_atual_novo in novos_estados.items():
-        partes_nome = info_atual_novo["nome"][1:-1].split(',')
-        nome_original1 = partes_nome[0]
-        nome_original2 = partes_nome[1]
-
-        id_atual1_original = None
-        for id_e, info_e in estados1.items():
-            if info_e["nome"] == nome_original1:
-                id_atual1_original = id_e
-                break
-        id_atual2_original = None
-        for id_e, info_e in estados2.items():
-            if info_e["nome"] == nome_original2:
-                id_atual2_original = id_e
-                break
-
-        if id_atual1_original is None or id_atual2_original is None:
-            continue
-
-        mapa_transicoes1 = {}
-        for f, t, s in transicoes1:
-            if f == id_atual1_original:
-                mapa_transicoes1[s] = t
-
-        mapa_transicoes2 = {}
-        for f, t, s in transicoes2:
-            if f == id_atual2_original:
-                mapa_transicoes2[s] = t
-
-        for simbolo_alfabeto in alfabeto_resultado:
-            id_destino1 = mapa_transicoes1.get(simbolo_alfabeto)
-            id_destino2 = mapa_transicoes2.get(simbolo_alfabeto)
-
+    for (id1, id2), id_novo_origem in mapa_originais_para_novo_id.items():
+        for simbolo in alfabeto_uniao:
+            id_destino1 = mapa_transicoes1.get((id1, simbolo))
+            id_destino2 = mapa_transicoes2.get((id2, simbolo))
             if id_destino1 is not None and id_destino2 is not None:
-                id_destino_novo = tabela_busca_id_estado.get(
-                    (id_destino1, id_destino2))
-                if id_destino_novo is not None:
-                    novas_transicoes.append(
-                        (id_atual_novo, id_destino_novo, simbolo_alfabeto))
-                else:
-                    print(
-                        f"Aviso: Não encontrou o novo estado de destino para ({id_destino1},{id_destino2}) com símbolo {simbolo_alfabeto}. Isso pode indicar um problema na construção do autômato produto.")
-            else:
-                print(
-                    f"Aviso: Autômato incompleto ou símbolo ausente para ({id_atual1_original},{id_atual2_original}) no símbolo '{simbolo_alfabeto}'.")
+                id_novo_destino = mapa_originais_para_novo_id.get((id_destino1, id_destino2))
+                if id_novo_destino is not None:
+                    novas_transicoes.append((id_novo_origem, id_novo_destino, simbolo))
 
-    raiz_xml = ET.Element("structure")
-    ET.SubElement(raiz_xml, "type").text = "fa"
-    elemento_automato_xml = ET.SubElement(raiz_xml, "automaton")
-
-    for id_estado, info_estado in novos_estados.items():
-        elemento_estado_xml = ET.SubElement(
-            elemento_automato_xml, "state", id=id_estado, name=info_estado["nome"])
-        ET.SubElement(elemento_estado_xml, "x").text = "0"
-        ET.SubElement(elemento_estado_xml, "y").text = "0"
-        if info_estado["inicial"]:
-            ET.SubElement(elemento_estado_xml, "initial")
-        if info_estado["final"]:
-            ET.SubElement(elemento_estado_xml, "final")
-
-    for de_estado, para_estado, simbolo in novas_transicoes:
-        elemento_transicao_xml = ET.SubElement(
-            elemento_automato_xml, "transition")
-        ET.SubElement(elemento_transicao_xml, "from").text = de_estado
-        ET.SubElement(elemento_transicao_xml, "to").text = para_estado
-        ET.SubElement(elemento_transicao_xml,
-                      "read").text = "" if simbolo == "ε" else simbolo
-
-    nova_arvore_xml = ET.ElementTree(raiz_xml)
-    nova_arvore_xml.write(nome_saida, encoding="utf-8", xml_declaration=True)
-    print(f"\nArquivo '{nome_saida}' salvo com sucesso.")
-
+    print("Construção do autômato produto concluída.")
     return novos_estados, novas_transicoes
 
 
@@ -375,64 +316,37 @@ def main():
         while not nome_arquivo1:
             print("\n--- Carregando Autômato 1 ---")
             nome_arquivo1 = selecionar_arquivo("Selecione o arquivo do Autômato 1")
-            print(f"DEBUG: Caminho do arquivo selecionado (Autômato 1): '{nome_arquivo1}'")
             if not nome_arquivo1:
                 print("Nenhum arquivo foi selecionado para o Autômato 1.")
-                retry_automaton1 = input("Deseja tentar novamente selecionar o Autômato 1? (S/N): ")
-                if retry_automaton1.lower() != "s":
+                retry = input("Deseja tentar novamente? (S/N): ")
+                if retry.lower() != "s":
                     entrada = "n"
                     break
-        if entrada.lower() == "n":
-            break
-
-        if nome_arquivo1 and not os.path.exists(nome_arquivo1):
-            print(f"Erro: O arquivo '{nome_arquivo1}' não foi encontrado. Por favor, selecione um arquivo válido.")
-            continue
+        if entrada.lower() == "n": break
 
         try:
             arvore_xml1 = ET.parse(nome_arquivo1)
             raiz_xml1 = arvore_xml1.getroot()
             automato_xml1 = raiz_xml1.find("automaton")
             if automato_xml1 is None:
-                print(f"Erro: O arquivo '{nome_arquivo1}' não contém uma tag 'automaton' válida. Por favor, verifique o formato do arquivo JFLAP.")
+                print(f"Erro: O arquivo '{nome_arquivo1}' não é um arquivo JFLAP válido.")
                 continue
-        except ET.ParseError as e:
-            print(f"Erro ao analisar o arquivo XML do Autômato 1: {e}. Certifique-se de que é um arquivo JFLAP válido.")
+        except (ET.ParseError, FileNotFoundError) as e:
+            print(f"Erro ao carregar o Autômato 1: {e}")
             continue
 
-        estados1 = {}
-        transicoes1 = []
+        estados1 = {e.get("id"): {"nome": e.get("name"), "inicial": e.find("initial") is not None, "final": e.find("final") is not None} for e in automato_xml1.findall("state")}
+        transicoes1 = [(t.find("from").text, t.find("to").text, t.find("read").text) for t in automato_xml1.findall("transition")]
+        alfabeto1 = {s for _, _, s in transicoes1 if s is not None and s != "ε"}
 
-        for estado_elemento in automato_xml1.findall("state"):
-            id_estado = estado_elemento.get("id")
-            nome_estado = estado_elemento.get("name")
-            estados1[id_estado] = {
-                "nome": nome_estado,
-                "inicial": estado_elemento.find("initial") is not None,
-                "final": estado_elemento.find("final") is not None
-            }
-
-        for transicao_elemento in automato_xml1.findall("transition"):
-            de_estado = transicao_elemento.find("from").text
-            para_estado = transicao_elemento.find("to").text
-            leitura = transicao_elemento.find(
-                "read").text if transicao_elemento.find("read") is not None else "ε"
-            transicoes1.append((de_estado, para_estado, leitura))
-
-        alfabeto1 = set()
-        for _, _, simbolo in transicoes1:
-            if simbolo != "ε":
-                alfabeto1.add(simbolo)
-
-        print("\nEscolha uma operação para o Autômato 1:")
+        print("\nEscolha uma operação:")
         print("1 - Operação ESTRELA (Kleene Star)")
         print("2 - Operação COMPLEMENTO")
         print("3 - Operação DIFERENÇA SIMÉTRICA (requer 2 autômatos)")
-        print("Qualquer outra tecla para sair")
         entrada_usuario = input("Digite sua escolha: ")
 
         if entrada_usuario == "1":
-            estados1, transicoes1 = aplicar_estrela(
+           estados1, transicoes1 = aplicar_estrela(
                 estados1, transicoes1, arvore_xml1, automato_xml1)
         elif entrada_usuario == "2":
             estados1, transicoes1 = aplicar_complemento(
@@ -442,68 +356,48 @@ def main():
             while not nome_arquivo2:
                 print("\n--- Carregando Autômato 2 para Diferença Simétrica ---")
                 nome_arquivo2 = selecionar_arquivo("Selecione o arquivo do Autômato 2")
-                print(f"DEBUG: Caminho do arquivo selecionado (Autômato 2): '{nome_arquivo2}'")
                 if not nome_arquivo2:
                     print("Nenhum arquivo foi selecionado para o Autômato 2.")
-                    retry_automaton2 = input("Deseja tentar novamente selecionar o Autômato 2 ou cancelar a operação? (S/N para tentar novamente, C para cancelar): ")
-                    if retry_automaton2.lower() == "c":
-                        nome_arquivo2 = "CANCELLED"
-                        break
-                    elif retry_automaton2.lower() != "s":
+                    retry = input("Deseja tentar novamente ou cancelar? (S para tentar, C para cancelar): ")
+                    if retry.lower() == "c":
                         nome_arquivo2 = "CANCELLED"
                         break
             
             if nome_arquivo2 == "CANCELLED":
-                print("Operação de Diferença Simétrica cancelada.")
-            elif nome_arquivo2:
-                if not os.path.exists(nome_arquivo2):
-                    print(f"Erro: O arquivo '{nome_arquivo2}' não foi encontrado. Por favor, selecione um arquivo válido.")
+                print("Operação cancelada.")
+                continue
+
+            try:
+                arvore_xml2 = ET.parse(nome_arquivo2)
+                raiz_xml2 = arvore_xml2.getroot()
+                automato_xml2 = raiz_xml2.find("automaton")
+                if automato_xml2 is None:
+                    print(f"Erro: O arquivo '{nome_arquivo2}' não é um arquivo JFLAP válido.")
                     continue
+            except (ET.ParseError, FileNotFoundError) as e:
+                print(f"Erro ao carregar o Autômato 2: {e}")
+                continue
 
-                try:
-                    arvore_xml2 = ET.parse(nome_arquivo2)
-                    raiz_xml2 = arvore_xml2.getroot()
-                    automato_xml2 = raiz_xml2.find("automaton")
-                    if automato_xml2 is None:
-                        print(f"Erro: O arquivo '{nome_arquivo2}' não contém uma tag 'automaton' válida. Por favor, verifique o formato do arquivo JFLAP.")
-                        continue
-                except ET.ParseError as e:
-                    print(f"Erro ao analisar o arquivo XML do Autômato 2: {e}. Certifique-se de que é um arquivo JFLAP válido.")
-                    continue
+            estados2 = {e.get("id"): {"nome": e.get("name"), "inicial": e.find("initial") is not None, "final": e.find("final") is not None} for e in automato_xml2.findall("state")}
+            transicoes2 = [(t.find("from").text, t.find("to").text, t.find("read").text) for t in automato_xml2.findall("transition")]
+            alfabeto2 = {s for _, _, s in transicoes2 if s is not None and s != "ε"}
 
-                estados2 = {}
-                transicoes2 = []
-                for estado_elemento in automato_xml2.findall("state"):
-                    id_estado = estado_elemento.get("id")
-                    nome_estado = estado_elemento.get("name")
-                    estados2[id_estado] = {
-                        "nome": nome_estado,
-                        "inicial": estado_elemento.find("initial") is not None,
-                        "final": estado_elemento.find("final") is not None
-                    }
-                for transicao_elemento in automato_xml2.findall("transition"):
-                    de_estado = transicao_elemento.find("from").text
-                    para_estado = transicao_elemento.find("to").text
-                    leitura = transicao_elemento.find(
-                        "read").text if transicao_elemento.find("read") is not None else "ε"
-                    transicoes2.append((de_estado, para_estado, leitura))
+            novos_estados, novas_transicoes = aplicar_diferenca_simetrica(
+                estados1, transicoes1, alfabeto1, arvore_xml1, automato_xml1,
+                estados2, transicoes2, alfabeto2, arvore_xml2, automato_xml2
+            )
+            
+            if novos_estados:
+                estados_limpos, transicoes_limpas = remover_estados_inuteis(novos_estados, novas_transicoes)
+                
+                salvar_automato_jff(estados_limpos, transicoes_limpas, "diferenca_simetrica_otimizada.jff")
 
-                alfabeto2 = set()
-                for _, _, simbolo in transicoes2:
-                    if simbolo != "ε":
-                        alfabeto2.add(simbolo)
-
-                novos_estados, novas_transicoes = aplicar_diferenca_simetrica(
-                    estados1, transicoes1, alfabeto1, estados2, transicoes2, alfabeto2)
-                if novos_estados is not None:
-                    print("\nOperação de Diferença Simétrica aplicada.")
         else:
-            break
+            print("Opção inválida.")
 
-        print("\nDeseja fazer outra operação? (S ou N)")
-        entrada = input()
+        entrada = input("\nDeseja fazer outra operação? (S/N): ")
 
-    print("Fim do programa")
+    print("Fim do programa.")
 
 if __name__ == "__main__":
     main()
