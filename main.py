@@ -162,13 +162,9 @@ def aplicar_complemento(estados, transicoes, arvore_xml, automato_xml, alfabeto,
     """
     print("\n--- Iniciando Operação de Complemento ---")
 
-    # 1. Verifica se o autômato é completo usando sua função 'eh_completo'
     if not eh_completo(estados, transicoes, alfabeto):
         print("O autômato não é completo. Iniciando o processo para completá-lo...")
         
-        # 2. Se não for completo, chama a função para completar.
-        # A função 'completar_automato' (do Canvas) já salva o resultado.
-        # Usamos um nome de arquivo intermediário para o autômato completo.
         estados, transicoes = completar_automato(
             estados,
             transicoes,
@@ -179,23 +175,18 @@ def aplicar_complemento(estados, transicoes, arvore_xml, automato_xml, alfabeto,
         )
         print("Autômato completado. Continuando com a operação de complemento...")
 
-    # 3. Agora que o autômato está garantidamente completo, inverte os estados finais.
-    # O estado 'q_erro', que era não-final, agora se tornará final.
     print("Invertendo estados finais e não-finais...")
     for id_estado in estados:
         estados[id_estado]["final"] = not estados[id_estado]["final"]
 
     print("O estado 'q_erro' agora é um estado final.")
 
-    # 4. Salva o resultado final da operação de complemento
     print(f"Salvando o resultado final do complemento em '{nome_saida}'...")
-    
-    # Remove os elementos antigos de estado e transição do objeto XML
+
     for elemento in automato_xml.findall("state") + automato_xml.findall("transition"):
         if elemento in automato_xml:
             automato_xml.remove(elemento)
 
-    # Adiciona os novos estados (com os estados finais já invertidos) ao XML
     for id_estado, info_estado in estados.items():
         elemento_estado_xml = ET.SubElement(
             automato_xml, "state", id=id_estado, name=info_estado["nome"])
@@ -206,7 +197,6 @@ def aplicar_complemento(estados, transicoes, arvore_xml, automato_xml, alfabeto,
         ET.SubElement(elemento_estado_xml, "x").text = "0"
         ET.SubElement(elemento_estado_xml, "y").text = "0"
 
-    # Adiciona as transições (que agora incluem as do estado de erro) ao XML
     for de_estado, para_estado, simbolo in transicoes:
         elemento_transicao_xml = ET.SubElement(automato_xml, "transition")
         ET.SubElement(elemento_transicao_xml, "from").text = de_estado
@@ -214,7 +204,6 @@ def aplicar_complemento(estados, transicoes, arvore_xml, automato_xml, alfabeto,
         ET.SubElement(elemento_transicao_xml,
                       "read").text = "" if simbolo == "ε" else simbolo
 
-    # Escreve a árvore XML final no arquivo de saída
     arvore_xml.write(nome_saida, encoding="utf-8", xml_declaration=True)
     print(f"\nArquivo de complemento '{nome_saida}' salvo com sucesso.")
 
@@ -225,15 +214,15 @@ def eh_completo(estados, transicoes, alfabeto):
 
     transicoes_por_estado_simbolo = {}
     for de_estado, _, simbolo in transicoes:
-        if simbolo == 'ε': return False # AFND não é completo
+        if simbolo == 'ε': return False 
         if (de_estado, simbolo) in transicoes_por_estado_simbolo:
-            return False # Indeterminismo
+            return False 
         transicoes_por_estado_simbolo[(de_estado, simbolo)] = True
 
     for id_estado in estados.keys():
         for simbolo in alfabeto:
             if (id_estado, simbolo) not in transicoes_por_estado_simbolo:
-                return False # Transição faltando
+                return False 
     return True
 
 def aplicar_diferenca_simetrica(estados1, transicoes1, alfabeto1, estados2, transicoes2, alfabeto2, nome_saida="diferenca_simetrica_aplicada.jff"):
