@@ -57,58 +57,82 @@ def completar_automato(estados, transicoes, alfabeto, arvore_xml, automato_xml, 
     return estados, transicoes
 
 def aplicar_estrela(estados, transicoes, arvore_xml, automato_xml, nome_saida="estrela_aplicada.jff"):
-    novos_ids = [int(i) for i in estados.keys() if i.isdigit()]
-    novo_id_estado = str(max(novos_ids) + 1 if novos_ids else 0)
-    novo_nome_estado = f"q{novo_id_estado}"
+    novos_ids_int = []
+    for id_estado in estados.keys():
+        if id_estado.isdigit():
+            novos_ids_int.append(int(id_estado))
+    
+    proximo_id = max(novos_ids_int) + 1 if novos_ids_int else 0
+    
+    novo_id_inicial = str(proximo_id)
+    nome_novo_inicial = f"q{novo_id_inicial}"
+
+    novo_id_final = str(proximo_id + 1)
+    nome_novo_final = f"q{novo_id_final}"
 
     estado_inicial_antigo = None
+    estados_finais_antigos = []
+
     for id_estado, info_estado in estados.items():
-        if info_estado["inicial"]:
+        if info_estado.get("inicial"):
             estado_inicial_antigo = id_estado
             estados[id_estado]["inicial"] = False
-            break
+        if info_estado.get("final"):
+            estados_finais_antigos.append(id_estado)
+            estados[id_estado]["final"] = False
 
     if estado_inicial_antigo is None:
         print("Erro: Autômato não possui estado inicial definido. Não é possível aplicar a estrela.")
         return estados, transicoes
 
-    estados[novo_id_estado] = {
-        "nome": novo_nome_estado,
+    estados[novo_id_inicial] = {
+        "nome": nome_novo_inicial,
         "inicial": True,
+        "final": False
+    }
+
+    estados[novo_id_final] = {
+        "nome": nome_novo_final,
+        "inicial": False,
         "final": True
     }
 
-    transicoes.append((novo_id_estado, estado_inicial_antigo, "ε"))
+    transicoes.append((novo_id_inicial, estado_inicial_antigo, "ε"))
+    transicoes.append((novo_id_inicial, novo_id_final, "ε"))
 
-    for id_estado, info_estado in estados.items():
-        if info_estado["final"] and id_estado != novo_id_estado:
-            transicoes.append((id_estado, estado_inicial_antigo, "ε"))
+    for id_final_antigo in estados_finais_antigos:
+        transicoes.append((id_final_antigo, novo_id_final, "ε"))
+        transicoes.append((id_final_antigo, estado_inicial_antigo, "ε"))
 
-    for elemento in automato_xml.findall("state") + automato_xml.findall("transition"):
-        automato_xml.remove(elemento)
+    for element in list(automato_xml):
+        if element.tag in ["state", "transition"]:
+            automato_xml.remove(element)
 
     for id_estado, info_estado in estados.items():
         elemento_estado_xml = ET.SubElement(
             automato_xml, "state", id=id_estado, name=info_estado["nome"])
-        if info_estado["inicial"]:
-            ET.SubElement(elemento_estado_xml, "initial")
-        if info_estado["final"]:
-            ET.SubElement(elemento_estado_xml, "final")
-        ET.SubElement(elemento_estado_xml, "x").text = "0"
+        
+        ET.SubElement(elemento_estado_xml, "x").text = "0" 
         ET.SubElement(elemento_estado_xml, "y").text = "0"
+        
+        if info_estado.get("inicial"):
+            ET.SubElement(elemento_estado_xml, "initial")
+        if info_estado.get("final"):
+            ET.SubElement(elemento_estado_xml, "final")
 
     for de_estado, para_estado, simbolo in transicoes:
         elemento_transicao_xml = ET.SubElement(automato_xml, "transition")
         ET.SubElement(elemento_transicao_xml, "from").text = de_estado
         ET.SubElement(elemento_transicao_xml, "to").text = para_estado
-        ET.SubElement(elemento_transicao_xml,
-                      "read").text = "" if simbolo == "ε" else simbolo
+        ET.SubElement(elemento_transicao_xml, "read").text = "" if simbolo == "ε" else simbolo
 
-    arvore_xml.write(nome_saida, encoding="utf-8", xml_declaration=True)
-    print(f"\nArquivo '{nome_saida}' salvo com sucesso.")
+    try:
+        arvore_xml.write(nome_saida, encoding="utf-8", xml_declaration=True)
+        print(f"\nArquivo '{nome_saida}' salvo com sucesso.")
+    except Exception as e:
+        print(f"\nErro ao salvar o arquivo '{nome_saida}': {e}")
 
     return estados, transicoes
-
 def eh_completo(estados, transicoes, alfabeto):
     for _, _, simbolo in transicoes:
         if simbolo == "ε":
