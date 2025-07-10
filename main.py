@@ -7,7 +7,7 @@ def selecionar_arquivo(titulo="Selecione um arquivo .jff"):
     Tk().withdraw()
     return askopenfilename(title=titulo, filetypes=[("JFLAP files", "*.jff")])
 
-def salvar_automato_jff(estados, transicoes, nome_saida):
+def salvar_automato(estados, transicoes, nome_saida):
 
     raiz_xml = ET.Element("structure")
     ET.SubElement(raiz_xml, "type").text = "fa"
@@ -70,7 +70,7 @@ def completar_automato(estados, transicoes, alfabeto, arvore_xml, automato_xml, 
     transicoes.extend(novas_transicoes)
 
  
-    salvar_automato_jff(estados, transicoes, nome_saida)
+    salvar_automato(estados, transicoes, nome_saida)
     
     return estados, transicoes
 
@@ -390,7 +390,7 @@ def main():
             if novos_estados:
                 estados_limpos, transicoes_limpas = remover_estados_inuteis(novos_estados, novas_transicoes)
                 
-                salvar_automato_jff(estados_limpos, transicoes_limpas, "diferenca_simetrica_otimizada.jff")
+                salvar_automato(estados_limpos, transicoes_limpas, "diferenca_simetrica_otimizada.jff")
 
         else:
             print("Opção inválida.")
