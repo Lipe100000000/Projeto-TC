@@ -196,28 +196,11 @@ def eh_completo(estados, transicoes, alfabeto):
 
 def aplicar_complemento(estados, transicoes, arvore_xml, automato_xml, alfabeto, nome_saida="complemento_aplicado.jff"):
 
-    print("\n--- Iniciando Operação de Complemento ---")
-
     if not eh_completo(estados, transicoes, alfabeto):
-        print("O autômato não é completo. Iniciando o processo para completá-lo...")
-        
-        estados, transicoes = completar_automato(
-            estados,
-            transicoes,
-            alfabeto,
-            arvore_xml,
-            automato_xml,
-            nome_saida="automato_completo_temp.jff" 
-        )
-        print("Autômato completado. Continuando com a operação de complemento...")
+        estados, transicoes = completar_automato(estados, transicoes, alfabeto, arvore_xml, automato_xml, nome_saida="automato_completo_temp.jff")
 
-    print("Invertendo estados finais e não-finais...")
     for id_estado in estados:
         estados[id_estado]["final"] = not estados[id_estado]["final"]
-
-    print("O estado 'q_erro' agora é um estado final.")
-
-    print(f"Salvando o resultado final do complemento em '{nome_saida}'...")
 
     for elemento in automato_xml.findall("state") + automato_xml.findall("transition"):
         if elemento in automato_xml:
@@ -245,36 +228,16 @@ def aplicar_complemento(estados, transicoes, arvore_xml, automato_xml, alfabeto,
 
     return estados, transicoes
 
-def aplicar_diferenca_simetrica(
-    estados1, transicoes1, alfabeto1, arvore_xml1, automato_xml1,
-    estados2, transicoes2, alfabeto2, arvore_xml2, automato_xml2
-):
-
-    print("\n--- Iniciando Operação de Diferença Simétrica ---")
+def aplicar_diferenca_simetrica(estados1, transicoes1, alfabeto1, arvore_xml1, automato_xml1, estados2, transicoes2, alfabeto2, arvore_xml2, automato_xml2):
 
     alfabeto_uniao = alfabeto1.union(alfabeto2)
-    print(f"Alfabeto unificado para a operação: {sorted(list(alfabeto_uniao))}")
 
-    print("\n--- Verificando Autômato 1 ---")
     if not eh_completo(estados1, transicoes1, alfabeto_uniao):
-        print("O Autômato 1 não é completo. Completando...")
-        estados1, transicoes1 = completar_automato(
-            estados1, transicoes1, alfabeto_uniao, arvore_xml1, automato_xml1, "automato1_completo_temp.jff")
-        print("Autômato 1 completado.")
-    else:
-        print("O Autômato 1 já é completo.")
+        estados1, transicoes1 = completar_automato(estados1, transicoes1, alfabeto_uniao, arvore_xml1, automato_xml1, "automato1_completo_temp.jff")
 
-    print("\n--- Verificando Autômato 2 ---")
     if not eh_completo(estados2, transicoes2, alfabeto_uniao):
-        print("O Autômato 2 não é completo. Completando...")
-        estados2, transicoes2 = completar_automato(
-            estados2, transicoes2, alfabeto_uniao, arvore_xml2, automato_xml2, "automato2_completo_temp.jff")
-        print("Autômato 2 completado.")
-    else:
-        print("O Autômato 2 já é completo.")
-
-    print("\nConstruindo o autômato produto...")
-    
+        estados2, transicoes2 = completar_automato(estados2, transicoes2, alfabeto_uniao, arvore_xml2, automato_xml2, "automato2_completo_temp.jff")
+  
     novos_estados = {}
     novas_transicoes = []
     mapa_originais_para_novo_id = {}
@@ -286,11 +249,7 @@ def aplicar_diferenca_simetrica(
             novo_nome_combinado = f"({info1['nome']},{info2['nome']})"
             mapa_originais_para_novo_id[(id1, id2)] = novo_id
             eh_final = (info1["final"] and not info2["final"]) or (not info1["final"] and info2["final"])
-            novos_estados[novo_id] = {
-                "nome": novo_nome_combinado,
-                "inicial": info1["inicial"] and info2["inicial"],
-                "final": eh_final
-            }
+            novos_estados[novo_id] = {"nome": novo_nome_combinado,"inicial": info1["inicial"] and info2["inicial"],"final": eh_final}
             contador_novo_estado += 1
 
     mapa_transicoes1 = {(f, s): t for f, t, s in transicoes1}
@@ -305,7 +264,6 @@ def aplicar_diferenca_simetrica(
                 if id_novo_destino is not None:
                     novas_transicoes.append((id_novo_origem, id_novo_destino, simbolo))
 
-    print("Construção do autômato produto concluída.")
     return novos_estados, novas_transicoes
 
 
@@ -314,10 +272,10 @@ def main():
     while entrada.lower() == "s":
         nome_arquivo1 = None
         while not nome_arquivo1:
-            print("\n--- Carregando Autômato 1 ---")
-            nome_arquivo1 = selecionar_arquivo("Selecione o arquivo do Autômato 1")
+            print("\nImportando Autômato...")
+            nome_arquivo1 = selecionar_arquivo("Selecione o arquivo do Autômato")
             if not nome_arquivo1:
-                print("Nenhum arquivo foi selecionado para o Autômato 1.")
+                print("Nenhum arquivo foi selecionado para o Autômato.")
                 retry = input("Deseja tentar novamente? (S/N): ")
                 if retry.lower() != "s":
                     entrada = "n"
@@ -332,7 +290,7 @@ def main():
                 print(f"Erro: O arquivo '{nome_arquivo1}' não é um arquivo JFLAP válido.")
                 continue
         except (ET.ParseError, FileNotFoundError) as e:
-            print(f"Erro ao carregar o Autômato 1: {e}")
+            print(f"Erro ao importar o Autômato: {e}")
             continue
 
         estados1 = {e.get("id"): {"nome": e.get("name"), "inicial": e.find("initial") is not None, "final": e.find("final") is not None} for e in automato_xml1.findall("state")}
@@ -340,21 +298,19 @@ def main():
         alfabeto1 = {s for _, _, s in transicoes1 if s is not None and s != "ε"}
 
         print("\nEscolha uma operação:")
-        print("1 - Operação ESTRELA (Kleene Star)")
+        print("1 - Operação ESTRELA (Fecho de Kleene)")
         print("2 - Operação COMPLEMENTO")
         print("3 - Operação DIFERENÇA SIMÉTRICA (requer 2 autômatos)")
         entrada_usuario = input("Digite sua escolha: ")
 
         if entrada_usuario == "1":
-           estados1, transicoes1 = aplicar_estrela(
-                estados1, transicoes1, arvore_xml1, automato_xml1)
+           estados1, transicoes1 = aplicar_estrela(estados1, transicoes1, arvore_xml1, automato_xml1)
         elif entrada_usuario == "2":
-            estados1, transicoes1 = aplicar_complemento(
-                estados1, transicoes1, arvore_xml1, automato_xml1, alfabeto1)
+            estados1, transicoes1 = aplicar_complemento(estados1, transicoes1, arvore_xml1, automato_xml1, alfabeto1)
         elif entrada_usuario == "3":
             nome_arquivo2 = None
             while not nome_arquivo2:
-                print("\n--- Carregando Autômato 2 para Diferença Simétrica ---")
+                print("\nImportando Autômato 2 para Diferença Simétrica...")
                 nome_arquivo2 = selecionar_arquivo("Selecione o arquivo do Autômato 2")
                 if not nome_arquivo2:
                     print("Nenhum arquivo foi selecionado para o Autômato 2.")
@@ -375,23 +331,19 @@ def main():
                     print(f"Erro: O arquivo '{nome_arquivo2}' não é um arquivo JFLAP válido.")
                     continue
             except (ET.ParseError, FileNotFoundError) as e:
-                print(f"Erro ao carregar o Autômato 2: {e}")
+                print(f"Erro ao importar o Autômato 2: {e}")
                 continue
 
             estados2 = {e.get("id"): {"nome": e.get("name"), "inicial": e.find("initial") is not None, "final": e.find("final") is not None} for e in automato_xml2.findall("state")}
             transicoes2 = [(t.find("from").text, t.find("to").text, t.find("read").text) for t in automato_xml2.findall("transition")]
             alfabeto2 = {s for _, _, s in transicoes2 if s is not None and s != "ε"}
 
-            novos_estados, novas_transicoes = aplicar_diferenca_simetrica(
-                estados1, transicoes1, alfabeto1, arvore_xml1, automato_xml1,
-                estados2, transicoes2, alfabeto2, arvore_xml2, automato_xml2
-            )
+            novos_estados, novas_transicoes = aplicar_diferenca_simetrica(estados1, transicoes1, alfabeto1, arvore_xml1, automato_xml1,estados2, transicoes2, alfabeto2, arvore_xml2, automato_xml2)
             
             if novos_estados:
                 estados_limpos, transicoes_limpas = remover_estados_inuteis(novos_estados, novas_transicoes)
                 
-                salvar_automato(estados_limpos, transicoes_limpas, "diferenca_simetrica_otimizada.jff")
-
+                salvar_automato(estados_limpos, transicoes_limpas, "diferenca_simetrica_final.jff")
         else:
             print("Opção inválida.")
 
