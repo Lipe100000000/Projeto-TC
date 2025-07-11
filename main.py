@@ -7,7 +7,7 @@ def importar_arquivo(titulo="Selecione um arquivo .jff"):
     Tk().withdraw()
     return askopenfilename(title=titulo, filetypes=[("JFLAP files", "*.jff")])
 
-def salvar_automato(estados, transicoes, nome_saida):
+def salvar_automato(estados, transicoes):
 
     raiz_xml = ET.Element("structure")
     ET.SubElement(raiz_xml, "type").text = "fa"
@@ -31,6 +31,9 @@ def salvar_automato(estados, transicoes, nome_saida):
         ET.SubElement(elemento_transicao_xml, "read").text = "" if simbolo_lido == "ε" else simbolo_lido
 
     try:
+        nome_saida = input("Digite o nome do arquivo de saída: ") or "automato.jff"
+        if not nome_saida.endswith(".jff"):
+            nome_saida += ".jff"
         arvore_xml = ET.ElementTree(raiz_xml)
         arvore_xml.write(nome_saida, encoding="utf-8", xml_declaration=True)
         print(f"\nArquivo '{nome_saida}' salvo com sucesso.")
@@ -38,9 +41,7 @@ def salvar_automato(estados, transicoes, nome_saida):
         print(f"\nErro ao salvar o arquivo '{nome_saida}': {e}")
 
 
-def completar_automato(estados, transicoes, alfabeto, arvore_xml, automato_xml, nome_saida="completo.jff"):
-    print(f"\nIniciando o processo para completar o autômato (saída: {nome_saida})...")
-
+def completar_automato(estados, transicoes, alfabeto, arvore_xml, automato_xml):
     transicoes_existentes = {(de, simbolo) for de, _, simbolo in transicoes if simbolo is not None and simbolo != 'ε'}
 
     ids_numericos = [int(i) for i in estados.keys() if i.isdigit()]
@@ -52,7 +53,6 @@ def completar_automato(estados, transicoes, alfabeto, arvore_xml, automato_xml, 
         "inicial": False,
         "final": False
     }
-    print(f"Estado de erro '{nome_consumidor}' (ID: {id_consumidor}) adicionado.")
 
     novas_transicoes = []
     
@@ -65,18 +65,12 @@ def completar_automato(estados, transicoes, alfabeto, arvore_xml, automato_xml, 
         for simbolo in alfabeto:
             if (id_estado, simbolo) not in transicoes_existentes:
                 novas_transicoes.append((id_estado, id_consumidor, simbolo))
-                print(f"Adicionando transição faltante: ({estados[id_estado]['nome']}, {simbolo}) -> {nome_consumidor}")
 
     transicoes.extend(novas_transicoes)
-
- 
-    salvar_automato(estados, transicoes, nome_saida)
-    
+  
     return estados, transicoes
 
 def remover_estados_inuteis(estados, transicoes):
-  
-    print("\n--- Iniciando remoção de estados inalcançáveis ---")
 
     id_estado_inicial = next((id_e for id_e, info in estados.items() if info.get("inicial")), None)
     
@@ -98,12 +92,10 @@ def remover_estados_inuteis(estados, transicoes):
     estados_originais_cont = len(estados)
     novos_estados = {id_e: info for id_e, info in estados.items() if id_e in estados_alcancaveis}
     novas_transicoes = [(de, para, simbolo) for de, para, simbolo in transicoes if de in estados_alcancaveis and para in estados_alcancaveis]
-
-    print(f"Otimização concluída: {estados_originais_cont - len(novos_estados)} estado(s) inalcançável(eis) removido(s).")
     
     return novos_estados, novas_transicoes
 
-def aplicar_estrela(estados, transicoes, arvore_xml, automato_xml, nome_saida="estrela_aplicada.jff"):
+def aplicar_estrela(estados, transicoes, arvore_xml, automato_xml):
     novos_ids_int = []
     for id_estado in estados.keys():
         if id_estado.isdigit():
@@ -173,12 +165,6 @@ def aplicar_estrela(estados, transicoes, arvore_xml, automato_xml, nome_saida="e
         ET.SubElement(elemento_transicao_xml, "to").text = para_estado
         ET.SubElement(elemento_transicao_xml, "read").text = "" if simbolo == "ε" else simbolo
 
-    try:
-        arvore_xml.write(nome_saida, encoding="utf-8", xml_declaration=True)
-        print(f"\nArquivo '{nome_saida}' salvo com sucesso.")
-    except Exception as e:
-        print(f"\nErro ao salvar o arquivo '{nome_saida}': {e}")
-
     return estados, transicoes
 
 def eh_completo(estados, transicoes, alfabeto):
@@ -194,10 +180,10 @@ def eh_completo(estados, transicoes, alfabeto):
                 return False
     return True
 
-def aplicar_complemento(estados, transicoes, arvore_xml, automato_xml, alfabeto, nome_saida="complemento_aplicado.jff"):
+def aplicar_complemento(estados, transicoes, arvore_xml, automato_xml, alfabeto):
 
     if not eh_completo(estados, transicoes, alfabeto):
-        estados, transicoes = completar_automato(estados, transicoes, alfabeto, arvore_xml, automato_xml, nome_saida="automato_completo_temp.jff")
+        estados, transicoes = completar_automato(estados, transicoes, alfabeto, arvore_xml, automato_xml)
 
     for id_estado in estados:
         estados[id_estado]["final"] = not estados[id_estado]["final"]
@@ -220,11 +206,7 @@ def aplicar_complemento(estados, transicoes, arvore_xml, automato_xml, alfabeto,
         elemento_transicao_xml = ET.SubElement(automato_xml, "transition")
         ET.SubElement(elemento_transicao_xml, "from").text = de_estado
         ET.SubElement(elemento_transicao_xml, "to").text = para_estado
-        ET.SubElement(elemento_transicao_xml,
-                      "read").text = "" if simbolo == "ε" else simbolo
-
-    arvore_xml.write(nome_saida, encoding="utf-8", xml_declaration=True)
-    print(f"\nArquivo de complemento '{nome_saida}' salvo com sucesso.")
+        ET.SubElement(elemento_transicao_xml, "read").text = "" if simbolo == "ε" else simbolo
 
     return estados, transicoes
 
@@ -233,10 +215,10 @@ def aplicar_diferenca_simetrica(estados1, transicoes1, alfabeto1, arvore_xml1, a
     alfabeto_uniao = alfabeto1.union(alfabeto2)
 
     if not eh_completo(estados1, transicoes1, alfabeto_uniao):
-        estados1, transicoes1 = completar_automato(estados1, transicoes1, alfabeto_uniao, arvore_xml1, automato_xml1, "automato1_completo_temp.jff")
+        estados1, transicoes1 = completar_automato(estados1, transicoes1, alfabeto_uniao, arvore_xml1, automato_xml1)
 
     if not eh_completo(estados2, transicoes2, alfabeto_uniao):
-        estados2, transicoes2 = completar_automato(estados2, transicoes2, alfabeto_uniao, arvore_xml2, automato_xml2, "automato2_completo_temp.jff")
+        estados2, transicoes2 = completar_automato(estados2, transicoes2, alfabeto_uniao, arvore_xml2, automato_xml2)
   
     novos_estados = {}
     novas_transicoes = []
@@ -305,8 +287,10 @@ def main():
 
         if entrada_usuario == "1":
            estados1, transicoes1 = aplicar_estrela(estados1, transicoes1, arvore_xml1, automato_xml1)
+           salvar_automato(estados1, transicoes1)   
         elif entrada_usuario == "2":
             estados1, transicoes1 = aplicar_complemento(estados1, transicoes1, arvore_xml1, automato_xml1, alfabeto1)
+            salvar_automato(estados1, transicoes1)
         elif entrada_usuario == "3":
             nome_arquivo2 = None
             while not nome_arquivo2:
@@ -343,7 +327,7 @@ def main():
             if novos_estados:
                 estados_limpos, transicoes_limpas = remover_estados_inuteis(novos_estados, novas_transicoes)
                 
-                salvar_automato(estados_limpos, transicoes_limpas, "diferenca_simetrica_final.jff")
+                salvar_automato(estados_limpos, transicoes_limpas)
         else:
             print("Opção inválida.")
 
