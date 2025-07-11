@@ -3,7 +3,7 @@ from tkinter import Tk
 from tkinter.filedialog import askopenfilename
 import os
 
-def selecionar_arquivo(titulo="Selecione um arquivo .jff"):
+def importar_arquivo(titulo="Selecione um arquivo .jff"):
     Tk().withdraw()
     return askopenfilename(title=titulo, filetypes=[("JFLAP files", "*.jff")])
 
@@ -273,7 +273,7 @@ def main():
         nome_arquivo1 = None
         while not nome_arquivo1:
             print("\nImportando Autômato...")
-            nome_arquivo1 = selecionar_arquivo("Selecione o arquivo do Autômato")
+            nome_arquivo1 = importar_arquivo("Selecione o arquivo do Autômato")
             if not nome_arquivo1:
                 print("Nenhum arquivo foi selecionado para o Autômato.")
                 retry = input("Deseja tentar novamente? (S/N): ")
@@ -311,7 +311,7 @@ def main():
             nome_arquivo2 = None
             while not nome_arquivo2:
                 print("\nImportando Autômato 2 para Diferença Simétrica...")
-                nome_arquivo2 = selecionar_arquivo("Selecione o arquivo do Autômato 2")
+                nome_arquivo2 = importar_arquivo("Selecione o arquivo do Autômato 2")
                 if not nome_arquivo2:
                     print("Nenhum arquivo foi selecionado para o Autômato 2.")
                     retry = input("Deseja tentar novamente ou cancelar? (S para tentar, C para cancelar): ")
