@@ -7,6 +7,36 @@ def importar_arquivo(titulo="Selecione um arquivo .jff"):
     Tk().withdraw()
     return askopenfilename(title=titulo, filetypes=[("JFLAP files", "*.jff")])
 
+def carregar_automato(titulo):
+    nome_arquivo = None
+    while not nome_arquivo:
+        print(f"\nImportando Autômato...")
+        nome_arquivo = importar_arquivo(titulo)
+        if not nome_arquivo:
+            print("Nenhum arquivo foi selecionado.")
+            retry = input("Deseja tentar novamente? (S/N): ")
+            if retry.lower() != "s":
+                return None
+
+    try:
+        arvore_xml = ET.parse(nome_arquivo)
+        raiz_xml = arvore_xml.getroot()
+        automato_xml = raiz_xml.find("automaton")
+        if automato_xml is None:
+            print(f"Erro: O arquivo '{nome_arquivo}' não contém a estrutura de um autômato JFLAP.")
+            return None
+
+        estados = {e.get("id"): {"nome": e.get("name"), "inicial": e.find("initial") is not None, "final": e.find("final") is not None} for e in automato_xml.findall("state")}
+        transicoes = [(t.find("from").text, t.find("to").text, t.find("read").text) for t in automato_xml.findall("transition")]
+        alfabeto = {s for _, _, s in transicoes if s is not None and s != "ε"}
+        
+        print(f"Autômato '{os.path.basename(nome_arquivo)}' carregado com sucesso.")
+        return estados, transicoes, alfabeto, arvore_xml, automato_xml
+
+    except (ET.ParseError, FileNotFoundError) as e:
+        print(f"Erro ao carregar o arquivo do autômato: {e}")
+        return None
+
 def salvar_automato(estados, transicoes):
 
     raiz_xml = ET.Element("structure")
@@ -40,7 +70,6 @@ def salvar_automato(estados, transicoes):
     except Exception as e:
         print(f"\nErro ao salvar o arquivo '{nome_saida}': {e}")
 
-
 def completar_automato(estados, transicoes, alfabeto, arvore_xml, automato_xml):
     transicoes_existentes = {(de, simbolo) for de, _, simbolo in transicoes if simbolo is not None and simbolo != 'ε'}
 
@@ -48,12 +77,7 @@ def completar_automato(estados, transicoes, alfabeto, arvore_xml, automato_xml):
     id_consumidor = str(max(ids_numericos) + 1 if ids_numericos else len(estados))
     nome_consumidor = "q_erro"
     
-    estados[id_consumidor] = {
-        "nome": nome_consumidor,
-        "inicial": False,
-        "final": False
-    }
-
+    estados[id_consumidor] = {"nome": nome_consumidor,"inicial": False,"final": False}
     novas_transicoes = []
     
     for simbolo in alfabeto:
@@ -67,7 +91,7 @@ def completar_automato(estados, transicoes, alfabeto, arvore_xml, automato_xml):
                 novas_transicoes.append((id_estado, id_consumidor, simbolo))
 
     transicoes.extend(novas_transicoes)
-  
+    
     return estados, transicoes
 
 def remover_estados_inuteis(estados, transicoes):
@@ -75,7 +99,7 @@ def remover_estados_inuteis(estados, transicoes):
     id_estado_inicial = next((id_e for id_e, info in estados.items() if info.get("inicial")), None)
     
     if id_estado_inicial is None:
-        print("Aviso: Nenhum estado inicial encontrado. Não é possível otimizar.")
+        print("Aviso: Nenhum estado inicial encontrado.")
         return estados, transicoes
 
     estados_alcancaveis = set()
@@ -124,17 +148,8 @@ def aplicar_estrela(estados, transicoes, arvore_xml, automato_xml):
         print("Erro: Autômato não possui estado inicial definido. Não é possível aplicar a estrela.")
         return estados, transicoes
 
-    estados[novo_id_inicial] = {
-        "nome": nome_novo_inicial,
-        "inicial": True,
-        "final": False
-    }
-
-    estados[novo_id_final] = {
-        "nome": nome_novo_final,
-        "inicial": False,
-        "final": True
-    }
+    estados[novo_id_inicial] = {"nome": nome_novo_inicial,"inicial": True,"final": False}
+    estados[novo_id_final] = {"nome": nome_novo_final,"inicial": False,"final": True}
 
     transicoes.append((novo_id_inicial, estado_inicial_antigo, "ε"))
     transicoes.append((novo_id_inicial, novo_id_final, "ε"))
@@ -148,8 +163,7 @@ def aplicar_estrela(estados, transicoes, arvore_xml, automato_xml):
             automato_xml.remove(element)
 
     for id_estado, info_estado in estados.items():
-        elemento_estado_xml = ET.SubElement(
-            automato_xml, "state", id=id_estado, name=info_estado["nome"])
+        elemento_estado_xml = ET.SubElement(automato_xml, "state", id=id_estado, name=info_estado["nome"])
         
         ET.SubElement(elemento_estado_xml, "x").text = "0" 
         ET.SubElement(elemento_estado_xml, "y").text = "0"
@@ -193,8 +207,7 @@ def aplicar_complemento(estados, transicoes, arvore_xml, automato_xml, alfabeto)
             automato_xml.remove(elemento)
 
     for id_estado, info_estado in estados.items():
-        elemento_estado_xml = ET.SubElement(
-            automato_xml, "state", id=id_estado, name=info_estado["nome"])
+        elemento_estado_xml = ET.SubElement(automato_xml, "state", id=id_estado, name=info_estado["nome"])
         if info_estado.get("inicial"):
             ET.SubElement(elemento_estado_xml, "initial")
         if info_estado.get("final"):
@@ -219,7 +232,7 @@ def aplicar_diferenca_simetrica(estados1, transicoes1, alfabeto1, arvore_xml1, a
 
     if not eh_completo(estados2, transicoes2, alfabeto_uniao):
         estados2, transicoes2 = completar_automato(estados2, transicoes2, alfabeto_uniao, arvore_xml2, automato_xml2)
-  
+    
     novos_estados = {}
     novas_transicoes = []
     mapa_originais_para_novo_id = {}
@@ -252,32 +265,12 @@ def aplicar_diferenca_simetrica(estados1, transicoes1, alfabeto1, arvore_xml1, a
 def main():
     entrada = "s"
     while entrada.lower() == "s":
-        nome_arquivo1 = None
-        while not nome_arquivo1:
-            print("\nImportando Autômato...")
-            nome_arquivo1 = importar_arquivo("Selecione o arquivo do Autômato")
-            if not nome_arquivo1:
-                print("Nenhum arquivo foi selecionado para o Autômato.")
-                retry = input("Deseja tentar novamente? (S/N): ")
-                if retry.lower() != "s":
-                    entrada = "n"
-                    break
-        if entrada.lower() == "n": break
+        
+        dados_automato1 = carregar_automato("Selecione o arquivo do Autômato 1")
+        if dados_automato1 is None:
+            break
 
-        try:
-            arvore_xml1 = ET.parse(nome_arquivo1)
-            raiz_xml1 = arvore_xml1.getroot()
-            automato_xml1 = raiz_xml1.find("automaton")
-            if automato_xml1 is None:
-                print(f"Erro: O arquivo '{nome_arquivo1}' não é um arquivo JFLAP válido.")
-                continue
-        except (ET.ParseError, FileNotFoundError) as e:
-            print(f"Erro ao importar o Autômato: {e}")
-            continue
-
-        estados1 = {e.get("id"): {"nome": e.get("name"), "inicial": e.find("initial") is not None, "final": e.find("final") is not None} for e in automato_xml1.findall("state")}
-        transicoes1 = [(t.find("from").text, t.find("to").text, t.find("read").text) for t in automato_xml1.findall("transition")]
-        alfabeto1 = {s for _, _, s in transicoes1 if s is not None and s != "ε"}
+        estados1, transicoes1, alfabeto1, arvore_xml1, automato_xml1 = dados_automato1
 
         print("\nEscolha uma operação:")
         print("1 - Operação ESTRELA (Fecho de Kleene)")
@@ -286,47 +279,23 @@ def main():
         entrada_usuario = input("Digite sua escolha: ")
 
         if entrada_usuario == "1":
-           estados1, transicoes1 = aplicar_estrela(estados1, transicoes1, arvore_xml1, automato_xml1)
-           salvar_automato(estados1, transicoes1)   
+            estados1, transicoes1 = aplicar_estrela(estados1, transicoes1, arvore_xml1, automato_xml1)
+            salvar_automato(estados1, transicoes1)
         elif entrada_usuario == "2":
             estados1, transicoes1 = aplicar_complemento(estados1, transicoes1, arvore_xml1, automato_xml1, alfabeto1)
             salvar_automato(estados1, transicoes1)
         elif entrada_usuario == "3":
-            nome_arquivo2 = None
-            while not nome_arquivo2:
-                print("\nImportando Autômato 2 para Diferença Simétrica...")
-                nome_arquivo2 = importar_arquivo("Selecione o arquivo do Autômato 2")
-                if not nome_arquivo2:
-                    print("Nenhum arquivo foi selecionado para o Autômato 2.")
-                    retry = input("Deseja tentar novamente ou cancelar? (S para tentar, C para cancelar): ")
-                    if retry.lower() == "c":
-                        nome_arquivo2 = "CANCELLED"
-                        break
-            
-            if nome_arquivo2 == "CANCELLED":
-                print("Operação cancelada.")
+            dados_automato2 = carregar_automato("Selecione o arquivo do Autômato 2")
+            if dados_automato2 is None:
+                print("Operação de diferença simétrica cancelada.")
                 continue
 
-            try:
-                arvore_xml2 = ET.parse(nome_arquivo2)
-                raiz_xml2 = arvore_xml2.getroot()
-                automato_xml2 = raiz_xml2.find("automaton")
-                if automato_xml2 is None:
-                    print(f"Erro: O arquivo '{nome_arquivo2}' não é um arquivo JFLAP válido.")
-                    continue
-            except (ET.ParseError, FileNotFoundError) as e:
-                print(f"Erro ao importar o Autômato 2: {e}")
-                continue
-
-            estados2 = {e.get("id"): {"nome": e.get("name"), "inicial": e.find("initial") is not None, "final": e.find("final") is not None} for e in automato_xml2.findall("state")}
-            transicoes2 = [(t.find("from").text, t.find("to").text, t.find("read").text) for t in automato_xml2.findall("transition")]
-            alfabeto2 = {s for _, _, s in transicoes2 if s is not None and s != "ε"}
+            estados2, transicoes2, alfabeto2, arvore_xml2, automato_xml2 = dados_automato2
 
             novos_estados, novas_transicoes = aplicar_diferenca_simetrica(estados1, transicoes1, alfabeto1, arvore_xml1, automato_xml1,estados2, transicoes2, alfabeto2, arvore_xml2, automato_xml2)
             
             if novos_estados:
                 estados_limpos, transicoes_limpas = remover_estados_inuteis(novos_estados, novas_transicoes)
-                
                 salvar_automato(estados_limpos, transicoes_limpas)
         else:
             print("Opção inválida.")
