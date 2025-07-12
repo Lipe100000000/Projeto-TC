@@ -4,8 +4,14 @@ from tkinter.filedialog import askopenfilename
 import os
 
 def importar_arquivo(titulo="Selecione um arquivo .jff"):
-    Tk().withdraw()
-    return askopenfilename(title=titulo, filetypes=[("JFLAP files", "*.jff")])
+    root = Tk()
+    root.withdraw()
+    root.lift()
+    root.attributes("-topmost", True)
+    caminho = askopenfilename(title=titulo, filetypes=[("JFLAP files", "*.jff")])
+    root.destroy()
+    return caminho
+
 
 def carregar_automato(titulo):
     nome_arquivo = None
@@ -61,7 +67,7 @@ def salvar_automato(estados, transicoes):
         ET.SubElement(elemento_transicao_xml, "read").text = "" if simbolo_lido == "ε" else simbolo_lido
 
     try:
-        nome_saida = input("Digite o nome do arquivo de saída: ") or "automato.jff"
+        nome_saida = input("Digite o nome para salvar arquivo: ") or "automato.jff"
         if not nome_saida.endswith(".jff"):
             nome_saida += ".jff"
         arvore_xml = ET.ElementTree(raiz_xml)
@@ -264,19 +270,24 @@ def aplicar_diferenca_simetrica(estados1, transicoes1, alfabeto1, arvore_xml1, a
 
 def main():
     entrada = "s"
-    while entrada.lower() == "s":
-        
-        dados_automato1 = carregar_automato("Selecione o arquivo do Autômato 1")
-        if dados_automato1 is None:
-            break
-
-        estados1, transicoes1, alfabeto1, arvore_xml1, automato_xml1 = dados_automato1
+    while entrada == "s" or entrada == "S":
 
         print("\nEscolha uma operação:")
+        print("0 - Voltar")
         print("1 - Operação ESTRELA (Fecho de Kleene)")
         print("2 - Operação COMPLEMENTO")
         print("3 - Operação DIFERENÇA SIMÉTRICA (requer 2 autômatos)")
         entrada_usuario = input("Digite sua escolha: ")
+
+        if entrada_usuario == "0":
+            print("Saindo...")
+            return
+
+        dados_automato1 = carregar_automato("Selecione o arquivo do Autômato")
+        if dados_automato1 is None:
+            break
+
+        estados1, transicoes1, alfabeto1, arvore_xml1, automato_xml1 = dados_automato1
 
         if entrada_usuario == "1":
             estados1, transicoes1 = aplicar_estrela(estados1, transicoes1, arvore_xml1, automato_xml1)
